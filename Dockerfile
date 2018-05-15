@@ -24,7 +24,7 @@ ARG HADOOP_AWS_VERSION="2.7.5"
 ARG HADOOP_HDFS_HOME="/opt/hadoop"
 ARG HADOOP_MAJOR_VERSION="2.7"
 ARG HADOOP_SHA256="0bfc4d9b04be919be2fdf36f67fa3b4526cdbd406c512a7a1f5f1b715661f831"
-ARG HADOOP_URL="http://apache.spinellicreations.com/hadoop/common"
+ARG HADOOP_URL="https://s3-us-west-1.amazonaws.com/svt-dev/downloads"
 ARG HADOOP_VERSION="2.7.5"
 ARG JAVA_HOME="/opt/jdk"
 ARG JAVA_URL="https://downloads.mesosphere.com/java"
@@ -130,17 +130,15 @@ RUN cd /tmp \
     && echo "${MESOS_PROTOBUF_JAR_SHA1} mesos-${MESOS_VERSION}-shaded-protobuf.jar" | sha1sum -c - \
     && cd /tmp \
     && curl --retry 3 -fsSL -O "${DCOS_COMMONS_URL}/artifacts/${DCOS_COMMONS_VERSION}/bootstrap.zip" \
-    && echo "${DCOS_COMMONS_URL}/artifacts/${DCOS_COMMONS_VERSION}/bootstrap.zip" \
     && unzip "bootstrap.zip" -d "${MESOSPHERE_PREFIX}/bin/" \
     && curl --retry 3 -fsSL -O "${JAVA_URL}/server-jre-${JAVA_VERSION}-linux-x64.tar.gz" \
-    && echo "${JAVA_URL}/server-jre-${JAVA_VERSION}-linux-x64.tar.gz" \
     && tar xf "server-jre-${JAVA_VERSION}-linux-x64.tar.gz" -C "${JAVA_HOME}" --strip-components=1 \
-    && curl --retry 3 -fsSL -O "${HADOOP_URL}/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz" \
+    && curl --retry 3 -fsSL -O "${HADOOP_URL}/hadoop-${HADOOP_VERSION}.tar.gz" \
     && echo "${HADOOP_SHA256}" "hadoop-${HADOOP_VERSION}.tar.gz" | sha256sum -c - \
     && tar xf "hadoop-${HADOOP_VERSION}.tar.gz" -C "${HADOOP_HDFS_HOME}" --strip-components=1 \
-    && curl --retry 3 -fsSL -O "http://xhuynh-dev.s3.amazonaws.com/spark-SNAPSHOT.tgz" \
-    && echo "http://xhuynh-dev.s3.amazonaws.com/spark-SNAPSHOT.tgz" \
-    && tar xf "spark-SNAPSHOT.tgz" -C "${SPARK_HOME}" --strip-components=1 \
+    && curl --retry 3 -fsSL -O "https://s3-us-west-1.amazonaws.com/svt-dev/spark-2.2.1-bin-2.6.5-minGpu.tgz" \
+    && echo "spark-2.2.1-bin-2.6.5-minGpu.tgz" \
+    && tar xf "spark-2.2.1-bin-2.6.5-minGpu.tgz" -C "${SPARK_HOME}" --strip-components=1 \
     && cd "${SPARK_HOME}/jars" \
     && curl --retry 3 -fsSL -O "${AWS_JAVA_SDK_URL}/${AWS_JAVA_SDK_VERSION}/aws-java-sdk-${AWS_JAVA_SDK_VERSION}.jar" \
     && echo "${AWS_JAVA_SDK_JAR_SHA1} aws-java-sdk-${AWS_JAVA_SDK_VERSION}.jar" | sha1sum -c - \
@@ -195,6 +193,62 @@ RUN mkdir -p /var/lib/nginx \
     && cp "${CONDA_DIR}/share/examples/krb5/krb5.conf" /etc \
     && chmod ugo+rw /etc/krb5.conf
 
-ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${MESOSPHERE_PREFIX}/libmesos-bundle/lib:${JAVA_HOME}/jre/lib/amd64/server"
+
+# Add cudnn libraries
+
+ARG CONDA_ENV_YML="spark-root-conda-cudnn-env.yml"
+ARG NVIDIA_CUDA_MAJOR_VERSION="9-0"
+ARG NVIDIA_CUDA_PKG_VERSION="9.0.176-1"
+ARG NVIDIA_CUDA_VERSION="9.0"
+ARG NVIDIA_CUDA_TOOLS_GPG_KEY="7fa2af80"
+ARG NVIDIA_CUDNN_MAJOR_VERSION="7"
+ARG NVIDIA_CUDNN_PKG_VERSION="7.0.4.31-1+cuda9.0"
+ARG NVIDIA_DISTRO="ubuntu1604"
+ARG NVIDIA_DRIVER_CAPABILITIES="compute,utility"
+ARG NVIDIA_NCCL_MAJOR_VERSION="2"
+ARG NVIDIA_NCCL_PKG_VERSION="2.1.2-1+cuda9.0"
+ARG NVIDIA_REQUIRE_CUDA="cuda>=9.0"
+ARG NVIDIA_URL="http://developer.download.nvidia.com/compute"
+ARG NVIDIA_VISIBLE_DEVICES="all"
+ARG NVIDIA_VOLUMES_NEEDED="nvidia_driver"
+
+LABEL com.nvidia.volumes.needed=${NVIDIA_VOLUMES_NEEDED:-"nvidia_driver"} \
+      com.nvidia.cuda.version="${NVIDIA_CUDA_PKG_VERSION}" \
+      com.nvidia.cudnn.version="${NVIDIA_CUDNN_VERSION}"
+
+# Need to unset LD_LIBRARY_PATH first so that libraries in ${MESOSPHERE_PREFIX}/libmesos-bundle/lib don't interfere with apt
+RUN unset LD_LIBRARY_PATH \
+    && apt-key adv --keyserver "${GPG_KEYSERVER}" --recv-keys "${NVIDIA_CUDA_TOOLS_GPG_KEY}" \
+    && echo "deb ${NVIDIA_URL}/cuda/repos/${NVIDIA_DISTRO}/x86_64 /" > /etc/apt/sources.list.d/nvidia-cuda.list \
+    && echo "deb ${NVIDIA_URL}/machine-learning/repos/${NVIDIA_DISTRO}/x86_64 /" > /etc/apt/sources.list.d/nvidia-ml.list \
+    && apt-get update -yq --fix-missing \
+    && apt-get install -yq --no-install-recommends \
+       "cuda-cudart-${NVIDIA_CUDA_MAJOR_VERSION}=${NVIDIA_CUDA_PKG_VERSION}" \
+       "cuda-libraries-${NVIDIA_CUDA_MAJOR_VERSION}=${NVIDIA_CUDA_PKG_VERSION}" \
+       "cuda-libraries-dev-${NVIDIA_CUDA_MAJOR_VERSION}=${NVIDIA_CUDA_PKG_VERSION}" \
+       "libnccl${NVIDIA_NCCL_MAJOR_VERSION}=${NVIDIA_NCCL_PKG_VERSION}" \
+       "libcudnn${NVIDIA_CUDNN_MAJOR_VERSION}=${NVIDIA_CUDNN_PKG_VERSION}" \
+    && cd /usr/local \
+    && ln -s "cuda-${NVIDIA_CUDA_VERSION}" cuda \
+    && cd cuda-"${NVIDIA_CUDA_VERSION}/targets/x86_64-linux/lib" \
+    && ln -s stubs/libcuda.so libcuda.so.1 \
+    && echo "/usr/local/nvidia/lib" >> /etc/ld.so.conf.d/nvidia.conf \
+    && echo "/usr/local/nvidia/lib64" >> /etc/ld.so.conf.d/nvidia.conf \
+    && ldconfig \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY "${CONDA_ENV_YML}" "${CONDA_DIR}/"
+
+RUN ${CONDA_DIR}/bin/conda env update --json -q -f "${CONDA_DIR}/${CONDA_ENV_YML}" \
+    && ${CONDA_DIR}/bin/conda update --json --all -yq \
+    && ${CONDA_DIR}/bin/conda clean --json -tipsy \
+    && rm -rf /root/.cache/pip/*
+
+ENV NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-"all"} \
+    NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-"compute,utility"} \
+    NVIDIA_REQUIRE_CUDA=${NVIDIA_REQUIRE_CUDA:-"cuda>=9.0"} \
+    PATH="/usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}" \
+    LD_LIBRARY_PATH="/usr/local/nvidia/lib:/usr/local/nvidia/lib64:${MESOSPHERE_PREFIX}/libmesos-bundle/lib:${JAVA_HOME}/jre/lib/amd64/server"
 
 WORKDIR "${SPARK_HOME}"
