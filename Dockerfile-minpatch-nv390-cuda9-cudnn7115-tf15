@@ -190,6 +190,9 @@ COPY bash_profile "/root/.bash_profile"
 COPY bashrc "/root/.bashrc"
 COPY dircolors "/root/.dircolors"
 
+# Add external jar for pushing metrics via StatsD (https://github.com/vidhyaarvind/spark-statsd)
+COPY spark-statsd-1.0.0.jar $SPARK_HOME/jars/spark-statsd-1.0.0.jar
+
 RUN mkdir -p /var/lib/nginx \
     && ln -s /var/lib/runit/service/spark /etc/service/spark \
     && ln -s /var/lib/runit/service/nginx /etc/service/nginx \

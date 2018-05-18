@@ -100,6 +100,14 @@ if [ -d "${MESOS_SANDBOX}" ] ; then
         echo "spark-env: /etc/krb5.conf" >&2
         cat /etc/krb5.conf >&2
     fi
+
+    if [ -n "${STATSD_UDP_HOST}" ] && [ -n "${STATSD_UDP_PORT}" ]; then
+        sed -e "s/<STATSD_UDP_HOST>/${STATSD_UDP_HOST}/g" \
+            -e "s/<STATSD_UDP_PORT>/${STATSD_UDP_PORT}/g" \
+            ${SPARK_HOME}/conf/metrics.properties.template >${SPARK_HOME}/conf/metrics.properties
+    else
+        echo "spark-env: No STATSD_UDP environment variables were defined" >&2
+    fi
 fi
 
 # Options read when launching programs locally with
