@@ -43,9 +43,9 @@ ARG MESOS_PROTOBUF_JAR_SHA1="189ef74959049521be8f5a1c3de3921eb0117ffb"
 ARG MESOS_VERSION="1.5.0"
 ARG REPO="http://cdn-fastly.deb.debian.org"
 ARG SPARK_DCOS_VERSION="2.2.1-1.11.0"
-ARG SPARK_DIST_URL="https://s3-us-west-1.amazonaws.com/svt-dev"
+ARG SPARK_DIST_URL="https://downloads.mesosphere.com/spark"
 ARG SPARK_HOME="/opt/spark"
-ARG SPARK_VERSION="spark-2.2.1-bin-2.7.3"
+ARG SPARK_VERSION="2.2.1-2"
 ARG TENSORFLOW_SERVING_APT_URL="http://storage.googleapis.com/tensorflow-serving-apt"
 ARG TENSORFLOW_SERVING_VERSION="1.5.0"
 ARG VCS_REF
@@ -141,13 +141,9 @@ RUN cd /tmp \
     && tar xf "server-jre-${JAVA_VERSION}-linux-x64.tar.gz" -C "${JAVA_HOME}" --strip-components=1 \
     && curl --retry 3 -fsSL -O "${HADOOP_URL}/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz" \
     && echo "${HADOOP_SHA256}" "hadoop-${HADOOP_VERSION}.tar.gz" | sha256sum -c - \
-    && tar xf "hadoop-${HADOOP_VERSION}.tar.gz" -C "${HADOOP_HDFS_HOME}" --strip-components=1 
-
-# Install Spark
-RUN cd /tmp \ 
-    && curl --retry 3 -fsSL -O "${SPARK_DIST_URL}/${SPARK_VERSION}.tgz" \
-    && tar xf "${SPARK_VERSION}.tgz" -C "${SPARK_HOME}" --strip-components=1 \
-    && echo "${SPARK_VERSION}.tg" \
+    && tar xf "hadoop-${HADOOP_VERSION}.tar.gz" -C "${HADOOP_HDFS_HOME}" --strip-components=1 \
+    && curl --retry 3 -fsSL -O "https://s3-us-west-1.amazonaws.com/svt-dev/spark-2.2.1-bin-2.6.5-minGpu.tgz" \
+    && tar xf "spark-2.2.1-bin-2.6.5-minGpu.tgz" -C "${SPARK_HOME}" --strip-components=1 \
     && cd "${SPARK_HOME}/jars" \
     && curl --retry 3 -fsSL -O "${AWS_JAVA_SDK_URL}/${AWS_JAVA_SDK_VERSION}/aws-java-sdk-${AWS_JAVA_SDK_VERSION}.jar" \
     && echo "${AWS_JAVA_SDK_JAR_SHA1} aws-java-sdk-${AWS_JAVA_SDK_VERSION}.jar" | sha1sum -c - \
@@ -193,9 +189,6 @@ COPY profile "/root/.profile"
 COPY bash_profile "/root/.bash_profile"
 COPY bashrc "/root/.bashrc"
 COPY dircolors "/root/.dircolors"
-
-# Add external jar for pushing metrics via StatsD (https://github.com/vidhyaarvind/spark-statsd)
-COPY jars/spark-statsd-1.0.0.jar $SPARK_HOME/jars/spark-statsd-1.0.0.jar
 
 RUN mkdir -p /var/lib/nginx \
     && ln -s /var/lib/runit/service/spark /etc/service/spark \
